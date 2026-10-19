@@ -1,0 +1,16 @@
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+
+# SQLite is rebuilt from the committed CSVs on first start
+backend/data/market_data.db
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+*.tsbuildinfo
+next-env.d.ts
+
+.DS_Store

@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+/* Dark-only analytics theme. Series colors are the validated dataviz palette (dark steps). */
+@theme {
+  --color-page: #0d0d0d;
+  --color-surface: #1a1a19;
+  --color-surface-raised: #222220;
+  --color-surface-hover: #2a2a28;
+  --color-line: #2c2c2a;
+  --color-line-strong: #383835;
+  --color-ink: #f0efec;
+  --color-ink-secondary: #c3c2b7;
+  --color-ink-muted: #898781;
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+  --color-series-4: #c98500;
+  --color-good: #0ca30c;
+  --color-warn: #fab219;
+  --color-critical: #d03b3b;
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-page);
+  color: var(--color-ink);
+}
+
+@layer base {
+  /* Tailwind v4 defaults buttons to cursor:default and borders to currentColor */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  *,
+  ::after,
+  ::before {
+    border-color: var(--color-line);
+  }
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@layer components {
+  .input {
+    @apply w-full rounded-lg border border-line-strong bg-surface-raised px-2 py-1.5 text-sm text-ink;
+  }
+  .input:focus {
+    outline: 2px solid var(--color-series-1);
+    outline-offset: -1px;
+  }
+}
+
+/* Range sliders */
+input[type="range"] {
+  accent-color: var(--color-series-1);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+}
+
+.recharts-tooltip-cursor {
+  stroke: var(--color-ink-muted);
+}

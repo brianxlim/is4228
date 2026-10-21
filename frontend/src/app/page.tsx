@@ -9,7 +9,7 @@ import KpiRibbon from "@/components/KpiRibbon";
 import Charts from "@/components/Charts";
 import TradeLog from "@/components/TradeLog";
 import { api, API_URL } from "@/lib/api";
-import type { BacktestParams, BacktestResult, DataStatus, PairStats } from "@/lib/types";
+import type { BacktestParams, BacktestResult, DataStatus, PairStats, ScanWindow } from "@/lib/types";
 
 const DEFAULTS: BacktestParams = {
   asset_a: "D05.SI",
@@ -39,6 +39,7 @@ export default function Home() {
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
+  const [scanWindow, setScanWindow] = useState<ScanWindow>("formation");
   const abortRef = useRef<AbortController | null>(null);
 
   const minDate = status?.coverage?.[0]?.start;
@@ -53,22 +54,24 @@ export default function Home() {
         const c = s.coverage[0];
         if (c) setParams((p) => ({ ...p, start_date: p.start_date || c.start, end_date: p.end_date || c.end }));
       })
-      .catch((e: Error) => setError(`Cannot reach API at ${API_URL} — is the backend running? (${e.message})`));
+      .catch((e: Error) =>
+        setError(`Cannot reach the API at ${API_URL || window.location.origin} — is the backend running? (${e.message})`),
+      );
   }, [dataVersion]);
 
-  // Cointegration scan follows the selected date range.
+  // Cointegration scan follows the date range and, by default, only the formation window the backtest fits on.
   useEffect(() => {
     if (!params.start_date || !params.end_date) return;
     setCoLoading(true);
     const t = setTimeout(() => {
       api
-        .cointegration(params.start_date, params.end_date)
+        .cointegration(params.start_date, params.end_date, scanWindow, params.train_split_ratio)
         .then((r) => setPairs(r.pairs))
         .catch(() => setPairs(null))
         .finally(() => setCoLoading(false));
     }, 300);
     return () => clearTimeout(t);
-  }, [params.start_date, params.end_date, dataVersion]);
+  }, [params.start_date, params.end_date, params.train_split_ratio, scanWindow, dataVersion]);
 
   // Debounced backtest on any parameter change.
   useEffect(() => {
@@ -129,6 +132,9 @@ export default function Home() {
         <PairScanner
           pairs={pairs}
           loading={coLoading}
+          window={scanWindow}
+          trainSplit={params.train_split_ratio}
+          onWindowChange={setScanWindow}
           activeKey={`${params.asset_a}|${params.asset_b}`}
           onSelect={(a, b) => onChange({ asset_a: a, asset_b: b })}
         />

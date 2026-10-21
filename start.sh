@@ -10,7 +10,8 @@ else echo "Run 'make install' first"; exit 1; fi
 [ -d frontend/node_modules ] || (cd frontend && npm install)
 [ -f frontend/.env.local ] || echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > frontend/.env.local
 
-"$PY" -m uvicorn app.main:app --app-dir backend --port 8000 &
+# Demo-safe: never touch the network; data comes from the committed CSVs.
+STATARB_OFFLINE=1 "$PY" -m uvicorn app.main:app --app-dir backend --port 8000 &
 BACK=$!
 (cd frontend && npm run dev) &
 FRONT=$!

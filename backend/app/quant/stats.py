@@ -10,6 +10,20 @@ import statsmodels.api as sm
 from statsmodels.tsa.stattools import adfuller, coint
 
 SIGNIFICANCE = 0.05
+MARGINAL_SIGNIFICANCE = 0.10
+MAX_TRADEABLE_HALF_LIFE = 60.0  # trading days; slower spreads tie up capital for months
+
+
+def tradeability(eg_pvalue: float, half_life_days: float | None) -> tuple[str, str]:
+    """Go / no-go verdict for a pair: (TRADEABLE | MARGINAL | NOT_TRADEABLE, plain-English reason)."""
+    hl = f"half-life {half_life_days:.0f} days" if half_life_days else "spread does not mean-revert"
+    if eg_pvalue < SIGNIFICANCE and half_life_days and half_life_days <= MAX_TRADEABLE_HALF_LIFE:
+        return "TRADEABLE", f"Cointegrated (p = {eg_pvalue:.3f}) and {hl}"
+    if eg_pvalue < SIGNIFICANCE:
+        return "MARGINAL", f"Cointegrated (p = {eg_pvalue:.3f}) but {hl} is too slow"
+    if eg_pvalue < MARGINAL_SIGNIFICANCE and half_life_days:
+        return "MARGINAL", f"Weak evidence (p = {eg_pvalue:.3f}, needs < 0.05); {hl}"
+    return "NOT_TRADEABLE", f"No cointegration (p = {eg_pvalue:.3f}); {hl}"
 
 
 @dataclass
@@ -34,7 +48,8 @@ class PairStats:
     spread_std: float
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        verdict, reason = tradeability(self.eg_pvalue, self.half_life_days)
+        return {**asdict(self), "verdict": verdict, "verdict_reason": reason}
 
 
 def ols_hedge(y: np.ndarray, x: np.ndarray) -> tuple[float, float, float, np.ndarray]:

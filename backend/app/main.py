@@ -14,9 +14,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from . import data_ingest, db
-from .config import BENCHMARK, DB_PATH, NAMES, PAIRS, TICKERS
+from .config import ALLOW_SYNC, BENCHMARK, DB_PATH, NAMES, PAIRS, TICKERS
 from .quant.backtest import BacktestError, BacktestParams, run_backtest
 from .quant.stats import analyze_pair
+from .static_site import mount_frontend
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("statarb.api")
@@ -83,11 +84,14 @@ def data_status() -> dict:
         "database": str(DB_PATH.name),
         "total_rows": sum(c["rows"] for c in cov),
         "coverage": [{**c, "name": NAMES.get(c["ticker"], c["ticker"])} for c in cov],
+        "sync_enabled": ALLOW_SYNC,
     }
 
 
 @app.post("/api/data/sync")
 def data_sync() -> dict:
+    if not ALLOW_SYNC:
+        raise HTTPException(403, "Live sync is disabled to keep the demo dataset fixed (set STATARB_ALLOW_SYNC=1).")
     result = data_ingest.sync_from_yfinance()
     return {**result, "status": data_status()}
 
@@ -104,19 +108,27 @@ def _log_prices(start: str | None, end: str | None) -> pd.DataFrame:
 def cointegration(
     start_date: str | None = Query(None, description="YYYY-MM-DD"),
     end_date: str | None = Query(None, description="YYYY-MM-DD"),
+    window: Literal["formation", "full"] = Query(
+        "formation", description="formation = first train_split_ratio of the range (what the backtest fits on)"
+    ),
+    train_split_ratio: float = Query(0.3, ge=0.1, le=0.8),
 ) -> dict:
     logp = _log_prices(start_date, end_date)
     results = []
     for a, b in PAIRS:
+        pair = logp[[a, b]].dropna()
+        if window == "formation":
+            # Same slice the backtester uses to fit alpha/beta, so the scanner never sees the traded period.
+            pair = pair.iloc[: int(round(len(pair) * train_split_ratio))]
         try:
-            stats = analyze_pair(logp[a].rename(a), logp[b].rename(b)).to_dict()
+            stats = analyze_pair(pair[a].rename(a), pair[b].rename(b)).to_dict()
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         results.append({**stats, "label": f"{NAMES[a]} / {NAMES[b]}", "name_a": NAMES[a], "name_b": NAMES[b]})
     results.sort(key=lambda r: r["eg_pvalue"])
     for rank, r in enumerate(results, 1):
         r["rank"] = rank
-    return clean({"pairs": results, "significance": 0.05})
+    return clean({"pairs": results, "significance": 0.05, "window": window})
 
 
 class BacktestRequest(BaseModel):
@@ -177,3 +189,7 @@ def backtest_get(
     except Exception as exc:
         raise HTTPException(422, str(exc)) from exc
     return _run(req)
+
+
+# Last, so /api/* routes win over the static catch-all (production single-container build only).
+mount_frontend(app)

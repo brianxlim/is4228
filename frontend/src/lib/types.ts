@@ -15,7 +15,11 @@ export interface DataStatus {
   database: string;
   total_rows: number;
   coverage: Coverage[];
+  sync_enabled: boolean;
 }
+
+export type Verdict = "TRADEABLE" | "MARGINAL" | "NOT_TRADEABLE";
+export type ScanWindow = "formation" | "full";
 
 export interface PairStats {
   asset_a: string;
@@ -40,6 +44,8 @@ export interface PairStats {
   is_cointegrated: boolean;
   half_life_days: number | null;
   spread_std: number;
+  verdict: Verdict;
+  verdict_reason: string;
 }
 
 export interface BacktestParams {

@@ -36,5 +36,8 @@ TRADING_DAYS = 252
 RISK_FREE_RATE = float(os.getenv("STATARB_RISK_FREE", "0.03"))  # SORA proxy
 OFFLINE = os.getenv("STATARB_OFFLINE", "0") == "1"
 
+# Live re-download is off by default so a click can't change the committed demo dataset.
+ALLOW_SYNC = os.getenv("STATARB_ALLOW_SYNC", "0") == "1"
+
 SOURCE_YFINANCE = "yfinance_live"
 SOURCE_CSV = "local_csv_seed"

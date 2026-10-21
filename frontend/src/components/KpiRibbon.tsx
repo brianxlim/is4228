@@ -1,8 +1,10 @@
 "use client";
 
-import { Coins, Gauge, Percent, Sigma, TrendingDown, TrendingUp } from "lucide-react";
+import { AlertTriangle, Coins, Gauge, Percent, Sigma, TrendingDown, TrendingUp } from "lucide-react";
 import type { BacktestResult } from "@/lib/types";
 import { num, pct, pval, sgd } from "@/lib/format";
+
+const SMALL_SAMPLE = 30; // round trips; below this, flag the trade statistics as noisy
 
 export default function KpiRibbon({ result }: { result: BacktestResult | null }) {
   const m = result?.metrics;
@@ -37,13 +39,14 @@ export default function KpiRibbon({ result }: { result: BacktestResult | null })
       value: pct(m?.win_rate_pct, 1),
       sub: m ? `${m.total_trades} trades · PF ${num(m.profit_factor, 2)} · ${num(m.avg_holding_days, 1)}d avg` : "",
       tone: "neutral" as const,
+      flag: m && m.total_trades < SMALL_SAMPLE ? `Small sample: ${m.total_trades} trades` : undefined,
     },
     {
       icon: Sigma,
-      label: "ADF p-value & Half-Life",
+      label: "EG p-value & Half-Life",
       value: f ? `${pval(f.eg_pvalue)} · ${f.half_life_days ? `${num(f.half_life_days, 1)}d` : "∞"}` : "—",
-      sub: f ? `Formation EG test · β ${num(f.beta, 3)} · ADF p ${pval(f.adf_pvalue)}` : "",
-      tone: f ? (f.is_cointegrated ? ("good" as const) : ("warn" as const)) : ("neutral" as const),
+      sub: f ? `Formation window · ${f.verdict_reason}` : "",
+      tone: f ? (f.verdict === "TRADEABLE" ? ("good" as const) : f.verdict === "MARGINAL" ? ("warn" as const) : ("bad" as const)) : ("neutral" as const),
     },
     {
       icon: Coins,
@@ -62,7 +65,7 @@ export default function KpiRibbon({ result }: { result: BacktestResult | null })
             <c.icon size={13} /> {c.label}
           </div>
           <div
-            className={`mt-1 text-2xl font-semibold ${
+            className={`mt-1 whitespace-nowrap text-xl font-semibold 2xl:text-2xl ${
               c.tone === "good" ? "text-good" : c.tone === "bad" ? "text-critical" : c.tone === "warn" ? "text-warn" : "text-ink"
             }`}
           >
@@ -71,6 +74,12 @@ export default function KpiRibbon({ result }: { result: BacktestResult | null })
           <div className="mt-0.5 truncate text-[11px] text-ink-muted" title={c.sub}>
             {c.sub}
           </div>
+          {c.flag && (
+            <div className="mt-1 inline-flex items-center gap-1 rounded bg-warn/15 px-1.5 py-0.5 text-[11px] font-medium text-warn"
+              title="Fewer than 30 round trips: win rate and Sharpe have wide error bars">
+              <AlertTriangle size={11} /> {c.flag}
+            </div>
+          )}
         </div>
       ))}
     </section>

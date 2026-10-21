@@ -20,7 +20,7 @@ verify:
 	cd backend && ../$(PY) -m scripts.verify
 
 backend:
-	$(PY) -m uvicorn app.main:app --app-dir backend --port 8000 --reload
+	STATARB_OFFLINE=1 $(PY) -m uvicorn app.main:app --app-dir backend --port 8000 --reload
 
 frontend:
 	cd frontend && npm run dev

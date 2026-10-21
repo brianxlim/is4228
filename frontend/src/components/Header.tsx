@@ -38,20 +38,23 @@ export default function Header({ status, syncing, onSync }: Props) {
             >
               <Database size={14} className={live ? "text-good" : "text-series-1"} />
               <span className="font-medium">{live ? "SQLite + Yahoo Finance Live" : "SQLite + Local CSV Verified"}</span>
-              <span className="hidden text-ink-muted md:inline">
+              <span className="hidden text-ink-muted xl:inline">
                 · {synthetic ? "synthetic calibrated seed" : "Yahoo Finance data"}
                 {cov ? ` · ${cov.start} → ${cov.end}` : ""}
               </span>
             </div>
           )}
-          <button
-            onClick={onSync}
-            disabled={syncing}
-            className="flex items-center gap-2 rounded-lg border border-line-strong bg-surface-raised px-3 py-1.5 text-sm font-medium hover:bg-surface-hover disabled:opacity-60"
-          >
-            <RefreshCw size={15} className={syncing ? "animate-spin" : ""} />
-            {syncing ? "Syncing…" : "Sync Yahoo Finance"}
-          </button>
+          {/* Hidden unless the API runs with STATARB_ALLOW_SYNC=1, so a demo click can't change the dataset. */}
+          {status?.sync_enabled && (
+            <button
+              onClick={onSync}
+              disabled={syncing}
+              className="flex items-center gap-2 rounded-lg border border-line-strong bg-surface-raised px-3 py-1.5 text-sm font-medium hover:bg-surface-hover disabled:opacity-60"
+            >
+              <RefreshCw size={15} className={syncing ? "animate-spin" : ""} />
+              {syncing ? "Syncing…" : "Sync Yahoo Finance"}
+            </button>
+          )}
         </div>
       </div>
     </header>

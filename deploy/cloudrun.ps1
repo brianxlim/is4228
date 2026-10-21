@@ -11,7 +11,7 @@ param(
     [string]$Region = "asia-southeast1",   # Singapore
     [string]$Service = "sgx-statarb"
 )
-$ErrorActionPreference = "Stop"
+# No $ErrorActionPreference = "Stop": gcloud writes progress to stderr, which PowerShell 5.1 would treat as fatal.
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
 Write-Host "Enabling required APIs on $Project (no-op if already enabled)..."

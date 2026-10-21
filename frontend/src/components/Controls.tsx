@@ -1,6 +1,6 @@
 "use client";
 
-import { RotateCcw, SlidersHorizontal, Zap, ZapOff } from "lucide-react";
+import { ChevronDown, RotateCcw, SlidersHorizontal, Zap, ZapOff } from "lucide-react";
 import type { BacktestParams } from "@/lib/types";
 import { NAMES } from "@/lib/format";
 
@@ -48,37 +48,13 @@ export default function Controls({ params, minDate, maxDate, onChange, onReset }
         </select>
       </Field>
 
-      <div className="grid grid-cols-2 gap-2">
-        <Field label="Start date">
-          <input type="date" className="input" min={minDate} max={maxDate} value={params.start_date}
-            onChange={(e) => onChange({ start_date: e.target.value })} />
-        </Field>
-        <Field label="End date">
-          <input type="date" className="input" min={minDate} max={maxDate} value={params.end_date}
-            onChange={(e) => onChange({ end_date: e.target.value })} />
-        </Field>
-      </div>
-
-      <Slider label="Formation split (in-sample)" value={params.train_split_ratio} min={0.1} max={0.8} step={0.05}
-        display={`${Math.round(params.train_split_ratio * 100)}%`} onChange={(v) => onChange({ train_split_ratio: v })} />
-
-      <div className="grid grid-cols-2 gap-2">
-        <Field label="Hedge ratio">
-          <select className="input" value={params.hedge_mode}
-            onChange={(e) => onChange({ hedge_mode: e.target.value as BacktestParams["hedge_mode"] })}>
-            <option value="static">Static OLS (formation)</option>
-            <option value="rolling">Rolling OLS</option>
-          </select>
-        </Field>
-        <Field label="Lookback W (days)">
-          <input type="number" className="input" min={5} max={250} value={params.lookback_window}
-            onChange={(e) => onChange({ lookback_window: clampInt(e.target.value, 5, 250) })} />
-        </Field>
-      </div>
-      {params.hedge_mode === "rolling" && (
-        <Slider label="Rolling OLS window" value={params.hedge_window} min={40} max={500} step={10}
-          display={`${params.hedge_window}d`} onChange={(v) => onChange({ hedge_window: v })} />
-      )}
+      <Field label="Hedge ratio">
+        <select className="input" value={params.hedge_mode}
+          onChange={(e) => onChange({ hedge_mode: e.target.value as BacktestParams["hedge_mode"] })}>
+          <option value="static">Static OLS (fitted on formation window)</option>
+          <option value="rolling">Rolling OLS (re-fitted daily on past data)</option>
+        </select>
+      </Field>
 
       <Slider label="Entry |Z|" value={params.entry_z} min={1} max={3} step={0.1}
         display={params.entry_z.toFixed(1)} onChange={(v) => onChange({ entry_z: v })} />
@@ -87,16 +63,10 @@ export default function Controls({ params, minDate, maxDate, onChange, onReset }
       <Slider label="Stop-loss |Z|" value={params.stop_loss_z} min={2.5} max={5} step={0.1}
         display={params.stop_loss_z.toFixed(1)} onChange={(v) => onChange({ stop_loss_z: v })} />
 
-      <div className="grid grid-cols-2 gap-2">
-        <Field label="Cost per leg (bps)">
-          <input type="number" className="input" min={0} max={500} step={1} value={params.transaction_cost_bps}
-            onChange={(e) => onChange({ transaction_cost_bps: Math.max(0, Number(e.target.value) || 0) })} />
-        </Field>
-        <Field label="Capital (SGD)">
-          <input type="number" className="input" min={10000} step={10000} value={params.initial_capital}
-            onChange={(e) => onChange({ initial_capital: Math.max(10000, Number(e.target.value) || 100000) })} />
-        </Field>
-      </div>
+      <Field label="SGX cost per leg (bps)">
+        <input type="number" className="input" min={0} max={500} step={1} value={params.transaction_cost_bps}
+          onChange={(e) => onChange({ transaction_cost_bps: Math.max(0, Number(e.target.value) || 0) })} />
+      </Field>
 
       <button
         onClick={() => onChange({ transaction_cost_bps: frictionOn ? 0 : 15 })}
@@ -108,11 +78,46 @@ export default function Controls({ params, minDate, maxDate, onChange, onReset }
         Toggle Friction ({frictionOn ? `${params.transaction_cost_bps} bps → 0 bps` : "0 bps → 15 bps"})
       </button>
 
-      <label className="mt-3 flex items-center gap-2 text-xs text-ink-secondary">
-        <input type="checkbox" checked={params.execution_lag === 1}
-          onChange={(e) => onChange({ execution_lag: e.target.checked ? 1 : 0 })} />
-        Fill at next day&apos;s close (T+1 execution, no same-bar bias)
-      </label>
+      {/* Kept for Q&A, collapsed by default so the demo shows only the core levers. */}
+      <details className="group mt-4 border-t border-line pt-3">
+        <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-medium text-ink-secondary hover:text-ink">
+          Advanced settings
+          <ChevronDown size={14} className="transition group-open:rotate-180" />
+        </summary>
+        <div className="mt-3">
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Start date">
+              <input type="date" className="input" min={minDate} max={maxDate} value={params.start_date}
+                onChange={(e) => onChange({ start_date: e.target.value })} />
+            </Field>
+            <Field label="End date">
+              <input type="date" className="input" min={minDate} max={maxDate} value={params.end_date}
+                onChange={(e) => onChange({ end_date: e.target.value })} />
+            </Field>
+          </div>
+          <Slider label="Formation split (in-sample)" value={params.train_split_ratio} min={0.1} max={0.8} step={0.05}
+            display={`${Math.round(params.train_split_ratio * 100)}%`} onChange={(v) => onChange({ train_split_ratio: v })} />
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Z lookback W (days)">
+              <input type="number" className="input" min={5} max={250} value={params.lookback_window}
+                onChange={(e) => onChange({ lookback_window: clampInt(e.target.value, 5, 250) })} />
+            </Field>
+            <Field label="Capital (SGD)">
+              <input type="number" className="input" min={10000} step={10000} value={params.initial_capital}
+                onChange={(e) => onChange({ initial_capital: Math.max(10000, Number(e.target.value) || 100000) })} />
+            </Field>
+          </div>
+          {params.hedge_mode === "rolling" && (
+            <Slider label="Rolling OLS window" value={params.hedge_window} min={40} max={500} step={10}
+              display={`${params.hedge_window}d`} onChange={(v) => onChange({ hedge_window: v })} />
+          )}
+          <label className="flex items-center gap-2 text-xs text-ink-secondary">
+            <input type="checkbox" checked={params.execution_lag === 1}
+              onChange={(e) => onChange({ execution_lag: e.target.checked ? 1 : 0 })} />
+            Fill at next day&apos;s close (T+1 execution, no same-bar bias)
+          </label>
+        </div>
+      </details>
     </aside>
   );
 }

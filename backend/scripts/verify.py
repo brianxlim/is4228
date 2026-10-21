@@ -44,20 +44,31 @@ def main() -> None:
         st = client.get("/api/data/status").json()
         print(f"  source={st['source']} origin={st['origin']} rows={st['total_rows']}")
         check(st["total_rows"] > 4000, "database has ~5y x 4 tickers of rows")
+        check(st["sync_enabled"] is False, "live sync disabled by default")
+        check(client.post("/api/data/sync").status_code == 403, "sync endpoint refuses (403) when disabled")
 
-        print("== /api/cointegration")
-        r = client.get("/api/cointegration")
-        check(r.status_code == 200, "cointegration returns 200")
-        co = r.json()
-        check(strict_json(co), "cointegration payload is strict JSON")
-        check(len(co["pairs"]) == 3, "three pairs evaluated")
-        for p in co["pairs"]:
-            hl = p["half_life_days"]
-            print(
-                f"  #{p['rank']} {p['label']:12s} beta={p['beta']:.3f} corr={p['correlation']:.3f} "
-                f"ADF={p['adf_stat']:.2f} (p={p['adf_pvalue']:.4f}) EG p={p['eg_pvalue']:.4f} "
-                f"HL={'n/a' if hl is None else f'{hl:.1f}d'} coint={p['is_cointegrated']}"
-            )
+        for window in ("formation", "full"):
+            print(f"== /api/cointegration?window={window}")
+            r = client.get(f"/api/cointegration?window={window}")
+            check(r.status_code == 200, f"{window}: cointegration returns 200")
+            co = r.json()
+            check(strict_json(co), f"{window}: cointegration payload is strict JSON")
+            check(len(co["pairs"]) == 3, f"{window}: three pairs evaluated")
+            check(all(p["verdict"] in ("TRADEABLE", "MARGINAL", "NOT_TRADEABLE") and p["verdict_reason"]
+                      for p in co["pairs"]), f"{window}: every pair has a verdict and reason")
+            for p in co["pairs"]:
+                hl = p["half_life_days"]
+                print(
+                    f"  #{p['rank']} {p['label']:12s} n={p['n_obs']} beta={p['beta']:.3f} "
+                    f"EG p={p['eg_pvalue']:.4f} HL={'n/a' if hl is None else f'{hl:.1f}d'} -> {p['verdict']}"
+                )
+            if window == "formation":
+                scan = {(p["asset_a"], p["asset_b"]): p for p in co["pairs"]}
+                bt = client.post("/api/backtest", json={"asset_a": "D05.SI", "asset_b": "O39.SI"}).json()["formation"]
+                s = scan[("D05.SI", "O39.SI")]
+                check(s["n_obs"] == bt["n_obs"] and abs(s["beta"] - bt["beta"]) < 1e-9
+                      and abs(s["eg_pvalue"] - bt["eg_pvalue"]) < 1e-9,
+                      "formation scan matches the backtest's in-sample fit exactly")
 
         print("== /api/backtest (all pairs x hedge modes x friction)")
         for a, b in PAIRS:

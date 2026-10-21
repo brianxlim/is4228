@@ -17,7 +17,7 @@ if (-not (Test-Path "frontend\.env.local")) {
     [IO.File]::WriteAllText("$PSScriptRoot\frontend\.env.local", "NEXT_PUBLIC_API_URL=http://localhost:8000`n")
 }
 
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "& '$PSScriptRoot\$py' -m uvicorn app.main:app --app-dir '$PSScriptRoot\backend' --port 8000"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "`$env:STATARB_OFFLINE='1'; & '$PSScriptRoot\$py' -m uvicorn app.main:app --app-dir '$PSScriptRoot\backend' --port 8000"
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$PSScriptRoot\frontend'; npm run dev"
 
 Write-Host "Backend  -> http://localhost:8000/docs"

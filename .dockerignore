@@ -1,0 +1,10 @@
+**/node_modules
+**/.next
+**/out
+**/.venv
+**/__pycache__
+**/*.pyc
+**/market_data.db
+.git
+**/.env.local
+.claude

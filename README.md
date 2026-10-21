@@ -109,14 +109,36 @@ Useful commands (run inside `backend/` with the venv's Python):
 | `python -m scripts.seed --from-csv` | Rebuild SQLite from the committed CSVs only |
 | `python -m scripts.verify` | Run the verification suite (≈60 checks) |
 
-Set `STATARB_OFFLINE=1` to guarantee the app never touches the network during a live demo.
+The start scripts set `STATARB_OFFLINE=1`, so the app never touches the network during a live demo.
+
+### Production: one container (Docker / Cloud Run)
+In production, the dashboard is exported as static files and served by FastAPI alongside `/api/*`. That gives one container, one URL and no CORS setup. The image runs offline from the committed CSVs, as a non-root user, on `$PORT` (default 8080).
+
+```bash
+docker compose up --build        # then open http://localhost:8080
+```
+
+To deploy to **Google Cloud Run** (Singapore region, scales to zero), first log in once with `gcloud auth login`. Then run:
+
+```powershell
+.\deploy\cloudrun.ps1 -Project <your-gcp-project-id>
+```
+
+The script enables the Cloud Run, Cloud Build and Artifact Registry APIs, builds the `Dockerfile` remotely with Cloud Build, deploys the service and smoke-tests `/api/health`. A low-traffic class demo should fit in the free tier. With zero minimum instances, expect a cold start of a few seconds on the first request.
+
+**CI:** `.github/workflows/ci.yml` runs on every PR to `main`:
+- the backend verification suite;
+- frontend typecheck, build and `npm audit`;
+- a Docker image build.
+
+**Python versions** are pinned exactly: direct dependencies in `backend/requirements.txt`, the full tree in `backend/requirements.lock`. These pins need **Python 3.11+**.
 
 ### Data loading order (startup)
 1. If `market_data.db` already has rows, it is used as is.
 2. Otherwise SQLite is rebuilt from `data/csv/*.csv`. The source shows as `local_csv_seed`.
 3. If there are no CSVs either, the app seeds from yfinance. If that fails, it falls back to the synthetic generator.
 
-`POST /api/data/sync` re-downloads from yfinance. On success the source becomes `yfinance_live`. On failure it returns `ok: false` and **keeps the existing data**.
+**Live sync is off by default** so a stray click can't replace the committed dataset and shift the demo numbers. The "Sync Yahoo Finance" button and `POST /api/data/sync` only work when the backend runs with `STATARB_ALLOW_SYNC=1`; otherwise the button is hidden and the endpoint returns 403. When enabled, a successful sync sets the source to `yfinance_live`; a failed one returns `ok: false` and **keeps the existing data**.
 
 The committed CSVs hold **real Yahoo Finance adjusted closes, 2021-10-18 → 2026-10-19** (`_meta.json` records the provenance).
 
@@ -184,21 +206,27 @@ The engine also reports max drawdown, total return, CAGR, annualised volatility,
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/data/status` | row counts, coverage, `source` (`yfinance_live` / `local_csv_seed`), `origin` |
-| POST | `/api/data/sync` | refresh CSV + SQLite from yfinance (never crashes offline) |
-| GET | `/api/cointegration?start_date&end_date` | 3 pairs ranked by EG p-value: ρ, β, ADF stat/p, EG p, verdict, half-life |
+| POST | `/api/data/sync` | refresh CSV + SQLite from yfinance; 403 unless `STATARB_ALLOW_SYNC=1` |
+| GET | `/api/cointegration?start_date&end_date&window=formation\|full&train_split_ratio=0.3` | 3 pairs ranked by EG p-value: ρ, β, ADF stat/p, EG p, half-life, and a `verdict` (`TRADEABLE` / `MARGINAL` / `NOT_TRADEABLE`) with a plain-English `verdict_reason`. `window=formation` (default) tests only the in-sample slice the backtest fits on. |
 | POST/GET | `/api/backtest` | params below → `formation`, `metrics`, `benchmark_metrics`, `timeseries[]`, `trades[]` |
 
 Backtest parameters (defaults): `asset_a=D05.SI`, `asset_b=O39.SI`, `start_date`, `end_date`, `train_split_ratio=0.3`, `lookback_window=30`, `entry_z=2.0`, `exit_z=0.2`, `stop_loss_z=3.5`, `initial_capital=100000`, `transaction_cost_bps=15`, `hedge_mode=static|rolling`, `hedge_window=120`, `execution_lag=1`, `gross_leverage=1.0`, `lot_size=100`.
 
 ## 5. What the real data says (2021-10 → 2026-10, default parameters)
 
-| Pair | EG p (full 5y) | β | Half-life | Net return @15 bps | Net @0 bps |
-|---|---|---|---|---|---|
-| DBS / UOB | 0.132 | 1.78 | 51 d | −22.1% | −17.8% |
-| OCBC / UOB | 0.380 | 1.58 | 90 d | −26.2% | −19.6% |
-| DBS / OCBC | 0.567 | 1.10 | 86 d | −10.9% | −3.6% |
+| Pair | Verdict | EG p (formation, 377 days) | EG p (full 5y) | Sharpe @15 bps | Net return @15 bps | Net @0 bps |
+|---|---|---|---|---|---|---|
+| DBS / UOB | Not tradeable | 0.551 | 0.132 | −1.65 | −22.1% | −17.8% |
+| OCBC / UOB | Not tradeable | 0.552 | 0.380 | −1.63 | −26.2% | −19.6% |
+| DBS / OCBC | Not tradeable | 0.581 | 0.567 | −1.39 | −10.9% | −3.6% |
 
-Over the STI ETF's +90% run since April 2023, **none of the bank pairs is cointegrated at 5%**. A static-β strategy loses money, mostly through drawdowns in the 2024 DBS re-rating. Friction alone costs about 6–7% of capital over about 25 round trips. The best variant found is **OCBC/UOB with a rolling hedge**, at +9.3% gross and +2.4% net. This is an honest negative result, and it makes the core lesson of the project: high correlation (ρ ≈ 0.7) is **not** cointegration, and regime shifts break static hedge ratios.
+**None of the bank pairs is cointegrated at 5%**, whether tested on the formation window alone (what the strategy could have known before trading) or on all five years. A static-β strategy loses money on every pair, mostly through drawdowns in the 2024 DBS re-rating, while the STI ETF gained about 90% over the same period. Friction alone costs about 6–7% of capital over about 25 round trips.
+
+The best variant found, **OCBC/UOB with a rolling hedge**, still has a **Sharpe ratio of −0.50**: it returned +2.4% net (+9.3% gross) over 3.5 years, less than the 3% a year cash would have earned. Two caveats apply before reading anything into it:
+- **Data snooping.** It was picked as the best of 6 variants (3 pairs × 2 hedge modes) after seeing the results, so its edge is overstated. A fair test would fix the variant first and run it on new data.
+- **Small sample.** Each backtest has only 22–31 round trips (the dashboard flags anything under 30), so the win rate and Sharpe ratio carry wide error bars.
+
+This is an honest negative result, and it is the core lesson of the project: high correlation (ρ ≈ 0.7) is **not** cointegration, and regime shifts break static hedge ratios.
 
 To demo the mechanics on textbook cointegrated data, run `python -m scripts.seed --mode synthetic` and restart the backend. To go back to real data, run `python -m scripts.seed`.
 
@@ -207,12 +235,12 @@ To demo the mechanics on textbook cointegrated data, run `python -m scripts.seed
 | Time | Action | Talking point |
 |---|---|---|
 | 0:00 | Open the dashboard and point at the header badge | "Data is 5 years of Yahoo Finance adjusted closes, persisted in SQLite and backed by committed CSVs. The demo runs fully offline." |
-| 0:30 | **Pair scanner cards** | "All three bank pairs are about 0.7 correlated in returns, yet Engle-Granger rejects cointegration for every one. Correlation ≠ cointegration. Note the 50–90 day half-lives." |
-| 1:00 | Click **DBS / UOB** | "The strongest candidate. The β of 1.78 is the hedge: for each S$1 of DBS we trade S$1.78 of UOB in log terms." |
+| 0:30 | **Pair scanner cards** (formation window) | "The verdict comes first: all three pairs are *Not tradeable*. They are about 0.7 correlated in returns, but Engle-Granger rejects cointegration for every one. This test only uses the first 30% of the data, the same window the strategy fits on, so it never peeks at the period we trade. Correlation ≠ cointegration." |
+| 1:00 | Click **DBS / UOB**, point at the **Sharpe** card first | "Sharpe −1.65: worse than holding cash. The β is the hedge: how much UOB offsets each S$1 of DBS, in log terms. Note the *small sample* flag: about 25 trades." |
 | 1:20 | **Z-score chart** | "We enter at ±2σ (triangles) and exit near zero (rings). The red ✕ marks a stop-loss at 3.5σ, which fires when the relationship breaks." |
 | 1:50 | **Normalized price chart**, toggle *log P_A vs β log P_B* | "The gap between these lines *is* the spread. Shaded bands are open positions, and you can see where the gap kept widening in 2024." |
 | 2:20 | Click **Toggle Friction** (15 → 0 bps) | "Removing SGX brokerage, clearing and borrow costs lifts returns by about 4–7 points. Friction is first-order for a strategy with this turnover." |
-| 2:50 | Switch hedge ratio to **Rolling OLS**, select **OCBC / UOB** | "Re-estimating β every day on the past 120 days only, with no look-ahead, turns the strategy positive at +2.4% net." |
+| 2:50 | Switch hedge ratio to **Rolling OLS**, select **OCBC / UOB** | "Our best variant: re-estimating β daily on the past 120 days only. Lead with the Sharpe: still −0.50, so it lost to cash even though it's +2.4% net. And we picked it as the best of six tries after seeing the results, which is data snooping, so treat even that as optimistic." |
 | 3:20 | **Trade log**: filter *Stop loss*, then **Export CSV** | "Every trade has its signal date, fill date, board-lot share counts and prices, so a grader can recompute P&L in Excel." |
 | 3:45 | Wrap-up | "Formation/trading split, T+1 fills and an automated look-ahead test keep this honest. The finding: SG banks are correlated, but not reliably mean-reverting." |
 
@@ -220,4 +248,12 @@ To demo the mechanics on textbook cointegrated data, run `python -m scripts.seed
 - Daily closes only. The model has no intraday slippage, borrow availability or recall risk, and no dividend-withholding effects; adjusted closes embed dividends.
 - A single cost number (bps per leg) stands in for brokerage, clearing, SGX fees and borrow cost.
 - If yfinance is called while the market is open, the last bar may be an intraday price.
+- About 25 round trips per backtest is a small sample; results are indicative, not statistically conclusive.
+- The best-variant result is subject to data snooping (chosen after comparing 6 variants).
+
+### Deliberate scope cuts (kept in code, hidden or off in the demo UI)
+These are tucked into the collapsed **Advanced settings** panel or switched off, so the demo shows only the core levers (pair, entry/exit/stop-loss Z, costs, static vs rolling hedge):
+- custom date range, formation split, Z lookback window, starting capital, rolling-OLS window and the T+1 fill toggle;
+- live Yahoo Finance sync (`STATARB_ALLOW_SYNC=1` re-enables it);
+- the synthetic data generator (`scripts.seed --mode synthetic`).
 - This is an educational proof of concept, not investment advice.

@@ -126,6 +126,19 @@ To deploy to **Google Cloud Run** (Singapore region, scales to zero), first log 
 
 The script enables the Cloud Run, Cloud Build and Artifact Registry APIs, builds the `Dockerfile` remotely with Cloud Build, deploys the service and smoke-tests `/api/health`. A low-traffic class demo should fit in the free tier. With zero minimum instances, expect a cold start of a few seconds on the first request.
 
+**Cost safety.** Google Cloud has no instant spending cap, so the live deployment is protected in layers:
+1. **Locked by default.** Ingress is set to `internal`, so public requests get a 404 from Google's front end and never reach the container.
+   - Run `.\deploy\demo-unlock.ps1` just before presenting.
+   - Run `.\deploy\demo-lock.ps1` afterwards.
+2. **Small footprint.** At most 1 instance with 512 MiB, which limits how much a traffic flood can consume.
+3. **S$10 budget.** It sends email alerts at S$5, S$9 and S$10 and publishes to the Pub/Sub topic `billing-kill-switch`.
+4. **Kill switch.** The function in [`deploy/kill_switch/`](deploy/kill_switch/main.py) unlinks billing from the project once reported cost reaches the budget.
+   - It uses a dedicated service account with only *Project Billing Manager* on this project.
+   - Budget data lags by hours, so this caps runaway costs but is not instant.
+   - Unlinking stops the site. To restore it: `gcloud billing projects link <project> --billing-account <id>`.
+
+A prepaid or virtual card limit does **not** cap what you owe Google. Delete the project once grading is done.
+
 **CI:** `.github/workflows/ci.yml` runs on every PR to `main`:
 - the backend verification suite;
 - frontend typecheck, build and `npm audit`;

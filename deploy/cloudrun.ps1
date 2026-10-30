@@ -23,14 +23,15 @@ gcloud run deploy $Service `
     --region $Region `
     --source . `
     --port 8080 `
-    --memory 1Gi `
+    --memory 512Mi `
     --cpu 1 `
     --min-instances 0 `
-    --max-instances 2 `
+    --max-instances 1 `
     --allow-unauthenticated `
+    --ingress internal `
     --set-env-vars STATARB_OFFLINE=1
 
+# Deployed locked (ingress internal), matching the cost-safety setup; a public smoke test would 404 here.
+if ($LASTEXITCODE -ne 0) { throw "gcloud run deploy failed (exit $LASTEXITCODE)" }
 $url = gcloud run services describe $Service --project $Project --region $Region --format "value(status.url)"
-Write-Host "Smoke test: $url/api/health"
-Invoke-RestMethod "$url/api/health"
-Write-Host "Live at $url"
+Write-Host "Deployed LOCKED at $url. Run .\deploy\demo-unlock.ps1 to make it public and smoke-test /api/health."

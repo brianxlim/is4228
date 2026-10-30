@@ -124,7 +124,7 @@ To deploy to **Google Cloud Run** (Singapore region, scales to zero), first log 
 .\deploy\cloudrun.ps1 -Project <your-gcp-project-id>
 ```
 
-The script enables the Cloud Run, Cloud Build and Artifact Registry APIs, builds the `Dockerfile` remotely with Cloud Build, deploys the service and smoke-tests `/api/health`. A low-traffic class demo should fit in the free tier. With zero minimum instances, expect a cold start of a few seconds on the first request.
+The script enables the Cloud Run, Cloud Build and Artifact Registry APIs, builds the `Dockerfile` remotely with Cloud Build, and deploys the service **locked** (ingress `internal`, at most 1 instance with 512 MiB; see Cost safety below). Run `.\deploy\demo-unlock.ps1` to make it public; that script also smoke-tests `/api/health`. A low-traffic class demo should fit in the free tier. With zero minimum instances, expect a cold start of a few seconds on the first request.
 
 **Cost safety.** Google Cloud has no instant spending cap, so the live deployment is protected in layers:
 1. **Locked by default.** Ingress is set to `internal`, so public requests get a 404 from Google's front end and never reach the container.

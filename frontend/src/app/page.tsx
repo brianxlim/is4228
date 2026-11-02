@@ -7,9 +7,10 @@ import PairScanner from "@/components/PairScanner";
 import Controls from "@/components/Controls";
 import KpiRibbon from "@/components/KpiRibbon";
 import Charts from "@/components/Charts";
+import RollingCointegration from "@/components/RollingCointegration";
 import TradeLog from "@/components/TradeLog";
 import { api, API_URL } from "@/lib/api";
-import type { BacktestParams, BacktestResult, DataStatus, PairStats, ScanWindow } from "@/lib/types";
+import type { BacktestParams, BacktestResult, DataStatus, PairStats, RollingResult, ScanWindow } from "@/lib/types";
 
 const DEFAULTS: BacktestParams = {
   asset_a: "D05.SI",
@@ -40,6 +41,10 @@ export default function Home() {
   const [toast, setToast] = useState<{ ok: boolean; msg: string } | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
   const [scanWindow, setScanWindow] = useState<ScanWindow>("formation");
+  const [rolling, setRolling] = useState<RollingResult | null>(null);
+  const [rollingWindow, setRollingWindow] = useState(250);
+  const [rollingLoading, setRollingLoading] = useState(false);
+  const [rollingError, setRollingError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const minDate = status?.coverage?.[0]?.start;
@@ -72,6 +77,33 @@ export default function Home() {
     }, 300);
     return () => clearTimeout(t);
   }, [params.start_date, params.end_date, params.train_split_ratio, scanWindow, dataVersion]);
+
+  // Rolling cointegration follows the date range and window length (it does not depend on strategy parameters).
+  useEffect(() => {
+    if (!params.start_date || !params.end_date) return;
+    const ctrl = new AbortController();
+    setRollingLoading(true);
+    const t = setTimeout(() => {
+      api
+        .rollingCointegration(params.start_date, params.end_date, rollingWindow, ctrl.signal)
+        .then((r) => {
+          setRolling(r);
+          setRollingError(null);
+        })
+        .catch((e: Error) => {
+          if (e.name === "AbortError") return;
+          setRolling(null);
+          setRollingError(e.message);
+        })
+        .finally(() => {
+          if (!ctrl.signal.aborted) setRollingLoading(false);
+        });
+    }, 300);
+    return () => {
+      clearTimeout(t);
+      ctrl.abort();
+    };
+  }, [params.start_date, params.end_date, rollingWindow, dataVersion]);
 
   // Debounced backtest on any parameter change.
   useEffect(() => {
@@ -137,6 +169,15 @@ export default function Home() {
           onWindowChange={setScanWindow}
           activeKey={`${params.asset_a}|${params.asset_b}`}
           onSelect={(a, b) => onChange({ asset_a: a, asset_b: b })}
+        />
+
+        <RollingCointegration
+          data={rolling}
+          loading={rollingLoading}
+          window={rollingWindow}
+          onWindowChange={setRollingWindow}
+          activeKey={`${params.asset_a}|${params.asset_b}`}
+          error={rollingError}
         />
 
         <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">

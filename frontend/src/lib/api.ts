@@ -1,4 +1,4 @@
-import type { BacktestParams, BacktestResult, DataStatus, PairStats, ScanWindow } from "./types";
+import type { BacktestParams, BacktestResult, DataStatus, PairStats, RollingResult, ScanWindow } from "./types";
 
 // Dev: separate API server on :8000. Production build: same origin (FastAPI serves this static export),
 // unless NEXT_PUBLIC_API_URL points elsewhere.
@@ -31,6 +31,12 @@ export const api = {
     if (start) q.set("start_date", start);
     if (end) q.set("end_date", end);
     return request<{ pairs: PairStats[]; significance: number; window: ScanWindow }>(`/api/cointegration?${q}`);
+  },
+  rollingCointegration: (start: string, end: string, window: number, signal?: AbortSignal) => {
+    const q = new URLSearchParams({ window: String(window) });
+    if (start) q.set("start_date", start);
+    if (end) q.set("end_date", end);
+    return request<RollingResult>(`/api/cointegration/rolling?${q}`, { signal });
   },
   backtest: (params: BacktestParams, signal?: AbortSignal) =>
     request<BacktestResult>("/api/backtest", {

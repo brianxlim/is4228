@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from . import data_ingest, db
 from .config import ALLOW_SYNC, BENCHMARK, DB_PATH, NAMES, PAIRS, TICKERS
 from .quant.backtest import BacktestError, BacktestParams, run_backtest
-from .quant.stats import analyze_pair
+from .quant.stats import analyze_pair, rolling_cointegration
 from .static_site import mount_frontend
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -129,6 +129,45 @@ def cointegration(
     for rank, r in enumerate(results, 1):
         r["rank"] = rank
     return clean({"pairs": results, "significance": 0.05, "window": window})
+
+
+@app.get("/api/cointegration/rolling")
+def cointegration_rolling(
+    start_date: str | None = Query(None, description="YYYY-MM-DD"),
+    end_date: str | None = Query(None, description="YYYY-MM-DD"),
+    window: int = Query(250, ge=60, le=750, description="trailing window length in trading days"),
+    step: int = Query(5, ge=1, le=30, description="re-test every N trading days"),
+) -> dict:
+    """Engle-Granger p-value over time for each pair, using trailing windows only (no look-ahead)."""
+    logp = _log_prices(start_date, end_date)
+    results = []
+    for a, b in PAIRS:
+        pair = logp[[a, b]].dropna()
+        try:
+            series = rolling_cointegration(pair[a].rename(a), pair[b].rename(b), window=window, step=step)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        n = len(series)
+        tradeable = sum(1 for p in series if p["verdict"] == "TRADEABLE")
+        below = sum(1 for p in series if p["eg_pvalue"] < 0.05)
+        results.append(
+            {
+                "asset_a": a,
+                "asset_b": b,
+                "label": f"{NAMES[a]} / {NAMES[b]}",
+                "series": series,
+                "summary": {
+                    "windows": n,
+                    "pct_tradeable": 100 * tradeable / n,
+                    "pct_cointegrated": 100 * below / n,
+                    "latest_pvalue": series[-1]["eg_pvalue"],
+                    "latest_verdict": series[-1]["verdict"],
+                    "best_pvalue": min(p["eg_pvalue"] for p in series),
+                    "best_date": min(series, key=lambda p: p["eg_pvalue"])["date"],
+                },
+            }
+        )
+    return clean({"pairs": results, "window": window, "step": step, "significance": 0.05})
 
 
 class BacktestRequest(BaseModel):

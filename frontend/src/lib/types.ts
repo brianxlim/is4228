@@ -154,3 +154,34 @@ export interface BacktestResult {
   timeseries: TsRow[];
   trades: Trade[];
 }
+
+export interface RollingPoint {
+  date: string;
+  eg_pvalue: number;
+  half_life_days: number | null;
+  beta: number;
+  verdict: Verdict;
+}
+
+export interface RollingPair {
+  asset_a: string;
+  asset_b: string;
+  label: string;
+  series: RollingPoint[];
+  summary: {
+    windows: number;
+    pct_tradeable: number;
+    pct_cointegrated: number;
+    latest_pvalue: number;
+    latest_verdict: Verdict;
+    best_pvalue: number;
+    best_date: string;
+  };
+}
+
+export interface RollingResult {
+  pairs: RollingPair[];
+  window: number;
+  step: number;
+  significance: number;
+}

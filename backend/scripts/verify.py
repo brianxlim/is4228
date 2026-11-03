@@ -70,6 +70,24 @@ def main() -> None:
                       and abs(s["eg_pvalue"] - bt["eg_pvalue"]) < 1e-9,
                       "formation scan matches the backtest's in-sample fit exactly")
 
+        print("== /api/cointegration/rolling")
+        r = client.get("/api/cointegration/rolling")
+        check(r.status_code == 200, "rolling: returns 200")
+        ro = r.json()
+        check(strict_json(ro), "rolling: payload is strict JSON")
+        check(len(ro["pairs"]) == 3, "rolling: three pairs evaluated")
+        for p in ro["pairs"]:
+            sr = p["series"]
+            dates = [pt["date"] for pt in sr]
+            check(len(sr) > 50 and dates == sorted(dates), f"rolling {p['label']}: ordered series ({len(sr)} windows)")
+            check(all(0 <= pt["eg_pvalue"] <= 1 for pt in sr), f"rolling {p['label']}: p-values within [0, 1]")
+            sm = p["summary"]
+            print(f"  {p['label']:12s} cointegrated {sm['pct_cointegrated']:.0f}% / tradeable {sm['pct_tradeable']:.0f}% "
+                  f"of windows; best p={sm['best_pvalue']:.3f} on {sm['best_date']}; latest p={sm['latest_pvalue']:.3f}")
+        check(client.get("/api/cointegration/rolling?window=20").status_code == 422, "rolling: too-short window rejected (422)")
+        check(client.get("/api/cointegration/rolling?start_date=2026-01-01&window=250").status_code == 422,
+              "rolling: range shorter than the window rejected (422)")
+
         print("== /api/backtest (all pairs x hedge modes x friction)")
         for a, b in PAIRS:
             for mode in ("static", "rolling"):
@@ -132,6 +150,25 @@ def main() -> None:
             for x, y in zip(base["timeseries"][: cut + 1], alt["timeseries"][: cut + 1])
         )
         check(same, f"{mode}: Z-score, signals and equity up to {cut_date} unaffected by future prices")
+
+    # Rolling cointegration must also be causal: shocking prices after a cut leaves earlier points unchanged.
+    from app.quant.stats import rolling_cointegration  # noqa: E402
+
+    logp = np.log(prices[["D05.SI", "U11.SI"]].dropna())
+    cut_ts = logp.index[len(logp) // 2]
+    shocked_lp = logp.copy()
+    shocked_lp.loc[shocked_lp.index > cut_ts] += np.random.default_rng(1).normal(0, 0.05, size=((shocked_lp.index > cut_ts).sum(), 2))
+    pa = rolling_cointegration(logp["D05.SI"], logp["U11.SI"])
+    pb = rolling_cointegration(shocked_lp["D05.SI"], shocked_lp["U11.SI"])
+    before = [(x, y) for x, y in zip(pa, pb) if x["date"] <= cut_ts.strftime("%Y-%m-%d")]
+    from app.quant.stats import analyze_pair  # noqa: E402
+
+    one = rolling_cointegration(logp["D05.SI"], logp["U11.SI"], window=len(logp), step=1)
+    full = analyze_pair(logp["D05.SI"], logp["U11.SI"])
+    check(len(one) == 1 and abs(one[0]["eg_pvalue"] - full.eg_pvalue) < 1e-9,
+          "rolling cointegration: a full-length window reproduces the full-sample Engle-Granger p-value")
+    check(len(before) > 10 and all(np.isclose(x["eg_pvalue"], y["eg_pvalue"]) for x, y in before),
+          "rolling cointegration: points up to the cut are unaffected by future prices")
 
     print()
     if FAILURES:

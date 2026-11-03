@@ -105,3 +105,39 @@ def analyze_pair(log_a: pd.Series, log_b: pd.Series) -> PairStats:
         half_life_days=half_life(resid),
         spread_std=float(np.std(resid, ddof=1)),
     )
+
+
+def rolling_cointegration(
+    log_a: pd.Series, log_b: pd.Series, window: int = 250, step: int = 5
+) -> list[dict]:
+    """Engle-Granger p-value, half-life and verdict on a trailing window, re-run every `step` bars.
+
+    Each point at date t uses only the `window` bars ending at t (no future data), so it shows when the pair
+    would have looked tradeable to an analyst re-screening it on that day.
+    """
+    df = pd.concat([log_a, log_b], axis=1, join="inner").dropna()
+    if window < 60 or step < 1:
+        raise ValueError("window must be at least 60 bars and step at least 1")
+    if len(df) < window:
+        raise ValueError(f"Need at least {window} overlapping observations for a rolling window of {window}")
+    y_all, x_all = df.iloc[:, 0].to_numpy(), df.iloc[:, 1].to_numpy()
+
+    points: list[dict] = []
+    for end in range(window, len(df) + 1, step):
+        y, x = y_all[end - window : end], x_all[end - window : end]
+        _, beta, _, resid = ols_hedge(y, x)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            _, eg_p, _ = coint(y, x, trend="c", autolag="AIC")
+        hl = half_life(resid)
+        verdict, _ = tradeability(float(eg_p), hl)
+        points.append(
+            {
+                "date": df.index[end - 1].strftime("%Y-%m-%d"),
+                "eg_pvalue": float(eg_p),
+                "half_life_days": hl,
+                "beta": beta,
+                "verdict": verdict,
+            }
+        )
+    return points

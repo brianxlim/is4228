@@ -243,19 +243,18 @@ This is an honest negative result, and it is the core lesson of the project: hig
 
 To demo the mechanics on textbook cointegrated data, run `python -m scripts.seed --mode synthetic` and restart the backend. To go back to real data, run `python -m scripts.seed`.
 
-## 6. Four-minute live demo script
+## 6. Live demo walkthrough
 
-| Time | Action | Talking point |
+Start offline (`./start.sh` or `.\start.ps1`), open http://localhost:3000, click **Reset** and keep the scanner on **Formation window**. With these defaults the numbers below are what the dashboard shows.
+
+| Step | Action | What it shows |
 |---|---|---|
-| 0:00 | Open the dashboard and point at the header badge | "Data is 5 years of Yahoo Finance adjusted closes, persisted in SQLite and backed by committed CSVs. The demo runs fully offline." |
-| 0:30 | **Pair scanner cards** (formation window) | "The verdict comes first: all three pairs are *Not tradeable*. They are about 0.7 correlated in returns, but Engle-Granger rejects cointegration for every one. This test only uses the first 30% of the data, the same window the strategy fits on, so it never peeks at the period we trade. Correlation ≠ cointegration." |
-| 1:00 | Click **DBS / UOB**, point at the **Sharpe** card first | "Sharpe −1.65: worse than holding cash. The β is the hedge: how much UOB offsets each S$1 of DBS, in log terms. Note the *small sample* flag: about 25 trades." |
-| 1:20 | **Z-score chart** | "We enter at ±2σ (triangles) and exit near zero (rings). The red ✕ marks a stop-loss at 3.5σ, which fires when the relationship breaks." |
-| 1:50 | **Normalized price chart**, toggle *log P_A vs β log P_B* | "The gap between these lines *is* the spread. Shaded bands are open positions, and you can see where the gap kept widening in 2024." |
-| 2:20 | Click **Toggle Friction** (15 → 0 bps) | "Removing SGX brokerage, clearing and borrow costs lifts returns by about 4–7 points. Friction is first-order for a strategy with this turnover." |
-| 2:50 | Switch hedge ratio to **Rolling OLS**, select **OCBC / UOB** | "Our best variant: re-estimating β daily on the past 120 days only. Lead with the Sharpe: still −0.50, so it lost to cash even though it's +2.4% net. And we picked it as the best of six tries after seeing the results, which is data snooping, so treat even that as optimistic." |
-| 3:20 | **Trade log**: filter *Stop loss*, then **Export CSV** | "Every trade has its signal date, fill date, board-lot share counts and prices, so a grader can recompute P&L in Excel." |
-| 3:45 | Wrap-up | "Formation/trading split, T+1 fills and an automated look-ahead test keep this honest. The finding: SG banks are correlated, but not reliably mean-reverting." |
+| 1 | Point at the data badge and the three scanner cards | Five years of daily prices, run offline. All three pairs are *Not tradeable*: about 0.7 correlated, but Engle-Granger p = 0.55–0.58 on the formation window. |
+| 2 | Click **DBS / UOB** | Sharpe −1.65, net return −22.1% over 22 trades, flagged as a small sample. |
+| 3 | Scroll to the **Z-score chart** | Entries at ±2σ (triangles), exits near zero (rings), stop-loss at 3.5σ (red ✕). β = 0.70 is fitted on the first 30% only, and fills happen at the next day's close. |
+| 4 | Click **Toggle Friction** (15 → 0 bps), then back | Costs alone take about 4 points: −22.1% becomes −17.8%. |
+| 5 | Set hedge ratio to **Rolling OLS**, click **OCBC / UOB** | Best variant: +2.4% net but Sharpe −0.50, still below cash, and chosen as the best of six tries, so it is optimistic. |
+| 6 | Trade log: filter **Stop loss** | Every trade lists signal date, fill date, board-lot quantities and prices, so P&L can be recomputed by hand (and exported to CSV). |
 
 ## 7. Limitations
 - Daily closes only. The model has no intraday slippage, borrow availability or recall risk, and no dividend-withholding effects; adjusted closes embed dividends.

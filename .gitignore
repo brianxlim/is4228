@@ -17,3 +17,6 @@ backend/static/
 next-env.d.ts
 
 .DS_Store
+
+# Local assistant/deployment notes (may contain account details)
+.claude/

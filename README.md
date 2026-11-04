@@ -27,7 +27,7 @@ That is why the project tests for cointegration *before* trading, and why it mea
    - whether they are statistically cointegrated;
    - the **hedge ratio**: how many dollars of one bank offset one dollar of the other;
    - the half-life.
-3. **Backtests the strategy**: it replays history day by day as if you had traded the rules above with S$100,000. It charges realistic SGX trading costs and records every trade.
+3. **Backtests the strategy**: it replays history day by day as if you had traded the rules above with S$100,000. It charges an assumed SGX trading cost and records every trade.
 4. **Shows the results** on a dashboard:
    - profit, risk (Sharpe ratio, worst drawdown) and win rate;
    - charts of the gap, the trades and the account balance against the STI ETF;
@@ -38,7 +38,7 @@ That is why the project tests for cointegration *before* trading, and why it mea
 To keep the test honest, the strategy only uses information that would have been available at the time. The hedge ratio is fitted on the first 30% of the data, the strategy is then tested on the remaining 70%, and every trade fills on the *next* day's price. Section 3 has the details.
 
 ### The headline result
-On real 2021–2026 prices, **none of the three pairs passes the cointegration test**, and the strategy loses money on all of them. The banks are about 70% correlated, but in 2024 DBS re-rated well ahead of the other two, and the "temporary" gap never closed. Trading costs make the losses worse. Section 5 has the numbers. A negative result like this is the main lesson of the project: strongly correlated stocks are not automatically a profitable pair.
+On real 2021–2026 prices, **none of the three pairs passes the cointegration test**, and the strategy loses money on all of them. The banks are about 70% correlated, but from 2024 UOB fell well behind DBS and OCBC, and that gap never closed. Trading costs make the losses worse. Section 5 has the numbers. A negative result like this is the main lesson of the project: strongly correlated stocks are not automatically a profitable pair.
 
 ### Glossary
 | Term | Plain meaning |
@@ -195,7 +195,7 @@ $\mu_{t,W}$ and $\sigma_{t,W}$ are the rolling mean and standard deviation over 
 
 **Sizing:** gross notional equals equity × leverage (default 1). $N_A = \frac{G}{1+\beta}$ and $N_B=\beta N_A$. Share counts are rounded down to SGX board lots of 100.
 
-**Friction:** `transaction_cost_bps` is charged on $|q|\cdot P$ for **each leg on entry and on exit**. The default of 15 bps covers brokerage, clearing and short-borrow.
+**Friction:** `transaction_cost_bps` is charged on $|q|\cdot P$ for **each leg on entry and on exit**. The default of 15 bps is an assumed figure for brokerage and clearing; short-borrow fees, which grow with holding time, are not modelled.
 
 **Accounting:** $\text{Equity}_t=\text{Cash}_t+q_A P_{A,t}+q_B P_{B,t}$, with signed quantities, and short proceeds are credited to cash. Gross equity = net equity + cumulative fees.
 
@@ -233,7 +233,7 @@ Backtest parameters (defaults): `asset_a=D05.SI`, `asset_b=O39.SI`, `start_date`
 | OCBC / UOB | Not tradeable | 0.552 | 0.380 | −1.63 | −26.2% | −19.6% |
 | DBS / OCBC | Not tradeable | 0.581 | 0.567 | −1.39 | −10.9% | −3.6% |
 
-**None of the bank pairs is cointegrated at 5%**, whether tested on the formation window alone (what the strategy could have known before trading) or on all five years. A static-β strategy loses money on every pair, mostly through drawdowns in the 2024 DBS re-rating, while the STI ETF gained about 90% over the same period. Friction alone costs about 6–7% of capital over about 25 round trips.
+**None of the bank pairs passes the 5% cointegration screen**, whether tested on the formation window alone (what the strategy could have known before trading) or on all five years. A static-β strategy loses money on every pair, as UOB fell behind DBS and OCBC from 2024. (For context, the STI ETF gained about 90% over the same period, though a long-only index is not a like-for-like benchmark.) Turning costs off improves net return by about 4–7 percentage points over 22–25 round trips.
 
 The best variant found, **OCBC/UOB with a rolling hedge**, still has a **Sharpe ratio of −0.50**: it returned +2.4% net (+9.3% gross) over 3.5 years, less than the 3% a year cash would have earned. Two caveats apply before reading anything into it:
 - **Data snooping.** It was picked as the best of 6 variants (3 pairs × 2 hedge modes) after seeing the results, so its edge is overstated. A fair test would fix the variant first and run it on new data.
@@ -241,7 +241,7 @@ The best variant found, **OCBC/UOB with a rolling hedge**, still has a **Sharpe 
 
 This is an honest negative result, and it is the core lesson of the project: high correlation (ρ ≈ 0.7) is **not** cointegration, and regime shifts break static hedge ratios.
 
-To demo the mechanics on textbook cointegrated data, run `python -m scripts.seed --mode synthetic` and restart the backend. To go back to real data, run `python -m scripts.seed`.
+To demo the mechanics on textbook cointegrated data, run `python -m scripts.seed --mode synthetic` and restart the backend. The synthetic mode overwrites the CSVs, so to go back to the committed real data, run `git restore data/csv` and then `python -m scripts.seed --from-csv` from `backend/`, and restart the backend. (Plain `scripts.seed` re-downloads from Yahoo and would change every number.)
 
 ## 6. Live demo walkthrough
 
@@ -252,13 +252,13 @@ Start offline (`./start.sh` or `.\start.ps1`), open http://localhost:3000, click
 | 1 | Point at the data badge and the three scanner cards | Five years of daily prices, run offline. All three pairs are *Not tradeable*: about 0.7 correlated, but Engle-Granger p = 0.55–0.58 on the formation window. |
 | 2 | Click **DBS / UOB** | Sharpe −1.65, net return −22.1% over 22 trades, flagged as a small sample. |
 | 3 | Scroll to the **Z-score chart** | Entries at ±2σ (triangles), exits near zero (rings), stop-loss at 3.5σ (red ✕). β = 0.70 is fitted on the first 30% only, and fills happen at the next day's close. |
-| 4 | Click **Toggle Friction** (15 → 0 bps), then back | Costs alone take about 4 points: −22.1% becomes −17.8%. |
+| 4 | Click **Toggle Friction** (15 → 0 bps), then back | Turning costs off improves the result by about 4.2 points: −22.1% becomes −17.8%. |
 | 5 | Set hedge ratio to **Rolling OLS**, click **OCBC / UOB** | Best variant: +2.4% net but Sharpe −0.50, still below cash, and chosen as the best of six tries, so it is optimistic. |
 | 6 | Trade log: filter **Stop loss** | Every trade lists signal date, fill date, board-lot quantities and prices, so P&L can be recomputed by hand (and exported to CSV). |
 
 ## 7. Limitations
 - Daily closes only. The model has no intraday slippage, borrow availability or recall risk, and no dividend-withholding effects; adjusted closes embed dividends.
-- A single cost number (bps per leg) stands in for brokerage, clearing, SGX fees and borrow cost.
+- A single assumed cost number (bps per leg) stands in for brokerage, clearing and SGX fees; borrow cost is not modelled.
 - If yfinance is called while the market is open, the last bar may be an intraday price.
 - About 25 round trips per backtest is a small sample; results are indicative, not statistically conclusive.
 - The best-variant result is subject to data snooping (chosen after comparing 6 variants).
